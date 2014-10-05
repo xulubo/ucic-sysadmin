@@ -1,0 +1,1 @@
+cat /data/servers/.servers | xargs -l1 healthcheck

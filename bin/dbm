@@ -1,0 +1,44 @@
+#!/bin/sh
+
+DBUSER=oobi
+DBPASSWD=Ubi13Computer!
+
+
+function new_software {
+VERSION=$1
+cat << END | mysql -h dbhost -u${DBUSER} -p"${DBPASSWD}" admin
+INSERT into software(name,version,release_time,state) values ("portal", "$VERSION", now(), "test");
+END
+}
+
+
+
+function db_backup {
+~/bin/dbbackup.sh
+}
+
+#
+# remove sensor_log data generated 2 days before
+#
+function db_clean {
+cat << END | mysql -h dbhost -uoobi -pUbi13Computer! oobi
+delete from sensor_log where detection_time < date_sub(now(), interval 2 day);
+delete from report where report_time < date_sub(now(), interval 7 day);
+delete from sensor_value_chunk where granularity=1 and begin_time < date_sub(now(), interval 3 day);
+delete from sensor_value_chunk where granularity=5 and begin_time < date_sub(now(), interval 30 day);
+delete from sensor_value_chunk where granularity=60 and begin_time < date_sub(now(), interval 30 day);
+delete from sys_log where creation_time < date_sub(now(), interval 30 day);
+delete from rule where owner is null;
+END
+}
+
+COMMAND=$1
+shift
+case $COMMAND in
+    new_software)
+      new_software $*
+      ;;
+
+    db_backup)
+      ;;
+esac;

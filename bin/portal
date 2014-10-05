@@ -1,0 +1,182 @@
+#!/bin/sh
+
+PATH_PREFIX=/data/servers/portal.theubi.com_
+SERVER_HOME=/data/servers/portal.theubi.com
+HOST=localhost
+PORT=8080
+SHUTDOWN_PORT=8085
+quiet=0
+
+chkargs() {
+    if [ x$dir  == x ]; then dir=$SERVER_HOME; fi
+    if [ x$port == x ]; then port=$PORT; fi
+    if [ x$host == x ]; then host=$HOST; fi
+ 
+    SHUTDOWN_PORT=$((port+5))
+
+    echo "server dir: $dir"
+    echo "host: $host"
+    echo "port: $port"
+
+}
+
+stop() {
+  echo stopping service $dir ...
+  cd $dir
+  ./bin/shutdown.sh > /dev/null 2>&1
+  keyword=`echo $dir | sed 's/\\./\\\\./g'`
+  echo keyword: $keyword
+  pid=`ps ax | grep "catalina.home=$keyword" | grep -v grep | head -n 1 | awk '{print $1;}'`
+  if [ $? -eq 0 ]; then
+    kill -9 $pid
+  fi
+  rm -rf webapps/ROOT
+}
+
+check_connected() {
+    for i in `seq 1 20`;
+    do
+	sleep 5
+	echo -n "connecting to http://$host:$port/login.jsp ... "
+	code=`curl -m 2 -I http://$host:$port/login.jsp 2>/dev/null | head -n1 | awk '{print $2}' `
+
+        if [ $? -eq 6 ]; then
+            echo "failed"
+            break;
+        elif [ x$code == x200 ]; then
+            echo  connected
+            started=yes
+            break
+        else
+            echo err:$? status_code:$code
+        fi
+    done
+}
+
+restart() {
+    if [ ! -d $dir ]; then
+        echo no such directory $dir
+        exit 1
+    fi
+
+    stop
+    echo starting service $dir ...
+    ls -l $dir/webapps/ROOT.war
+    cd $dir
+    ./bin/startup.sh > /dev/null 
+
+    if [ $quiet -eq 0 ]; then
+        check_connected;
+    fi
+}
+
+start() {
+  VER=$1
+  WAR=/data/backup/portal/portal-build-$VER.war
+
+  if [ ! -d $dir ]; then
+    mkdir $dir
+    if [ $? -ne 0 ]; then
+      echo "Failed: create directory $dir"
+      exit 3
+    fi
+    tar -xvzf /data/install/tomcat-template.tar.gz -C $dir --strip-components=1 > /dev/null
+    sed -i -e "s/#SHUTDOWN_PORT#/$SHUTDOWN_PORT/g" -e "s/#SERVICE_PORT#/$port/g" $dir/conf/server.xml
+    if [ $? -ne 0 ]; then
+      echo "Failed: modification of server.xml"
+      exit 4
+    fi
+  fi
+
+
+  if [ ! -f $WAR ]; then
+    scp main:$WAR $WAR
+    if [ $? -ne 0 ]; then
+      echo "Failed: couldn't find war $WAR"
+      exit 1
+    fi
+  fi
+
+  ln -s -f $WAR $dir/webapps/ROOT.war
+  if [ $? -ne 0 ]; then
+    echo "Failed: couldn't link file $WAR"
+    exit 2
+  fi
+
+  restart
+}
+
+#
+# this only works on standby server
+# don't run it on main server
+#
+clone() {
+	WAR=$dir/webapps/ROOT.war
+	scp main:$WAR webapps/ROOT.war
+	if [ $? -ne 0 ]; then
+		echo "Failed: couldn't find war $WAR"
+		exit 1
+	fi
+
+	restart
+}
+
+while getopts ":p:q" opt; do
+    case $opt in
+        p)
+            port=$OPTARG
+            if [ x$dir == x ];then
+                dir=${PATH_PREFIX}${port}
+            fi
+            ;;
+        q)
+            quiet=1
+            ;;
+        \?)
+            echo "Invalid option: -$OPTARG"
+            exit 1
+            ;;
+        :)
+            echo "Option -$OPTARG requires an argument. "
+            exit 1
+            ;;
+    esac
+done
+
+chkargs
+
+shift $((OPTIND-1))
+case "$1" in
+    start)
+        if [ $# -ne 2 ] ;then
+		        echo "version is not provided"
+		        exit 1
+	      fi 
+	      $1 $2 
+        ;;
+    stop)
+        $1
+        ;;
+    restart)
+        $1
+        ;;
+    clone)
+        $1
+        ;;
+    *)
+	ls -l $dir/webapps/ROOT.war
+	echo
+        echo $"Usage: $0 [operations] {clone|start <version>|stop|restart}"
+  echo ""
+  echo "Operations:"
+  echo "        -p port service port number default 8080"
+  echo "           service directory will be /data/servers/portal.theubi.com_${port}"
+  echo ""
+  echo "Commands:"
+	echo "        clone:           clone active service from active server"
+	echo "        start <version>: load package of specific verson from active server and restart service" 
+	echo "        restart:         restart the current service without copying package" 
+	echo "        stop:            stop service"
+        exit 2
+esac
+

@@ -1,0 +1,44 @@
+#!/bin/sh
+
+help() {
+  echo "healthcheck <server name> [port]"
+  echo "healthcheck -a"
+  echo "  Example: "
+  echo "      healthcheck portal.theubi.com"
+  echo ""
+}
+
+kill_by_keyword() {
+  ps ax | grep "$1" | grep -v grep | awk '{print $1;}' | xargs -n1 kill -9
+}
+
+hostname=localhost
+
+check() {
+    host=$1:$2
+    echo -n "checking host $host ... "
+    code=`curl -s -m 1 -I http://$host/login.jsp | head -n1 | awk '{print $2}'`
+    if [ x$code != x200 ]; then
+        echo "bad!"
+        exit 1
+    else
+        echo "good!"
+    fi
+}
+
+if [ $# -eq 1 ]; then
+  hostname=$1
+  port=80
+  KEYWORD="catalina.base=/data/servers/${hostname}"
+elif [ $# -ge 2 ]; then
+  hostname=$1
+  port=$2
+  KEYWORD="catalina.base=/data/servers/${hostname}_${PORT}"
+else
+  help
+  exit 1
+fi
+
+check $hostname $port
+
+

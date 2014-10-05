@@ -1,0 +1,39 @@
+#!/bin/bash
+
+
+NGX=/data/ucic/bin/nginx
+NGXCONF=/data/ucic/etc/nginx/nginx.conf
+
+if [ $# -eq 0 ]; then
+  opt=help
+else
+  opt=$1
+fi
+
+help() {
+  echo Usage:
+  echo "    ngx [restart, reload]"
+}
+
+restart() {
+  sudo killall -9 nginx
+  sudo $NGX -c $NGXCONF
+}
+
+reload() {
+  sudo $NGX -s reload -c $NGXCONF
+}
+
+case $opt in
+  reload)
+    reload
+    ;;
+
+  restart)
+    restart
+    ;;
+
+  *)
+    help
+    ;;
+esac

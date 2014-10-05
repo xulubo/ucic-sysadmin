@@ -1,0 +1,48 @@
+#!/bin/sh
+PATH=/data/ucic/bin:$PATH
+
+
+log() {
+  TIME=`date +"%Y-%m-%d %H:%M:%S"`
+  echo "[$TIME] $*"
+}
+
+kill_by_keyword() {
+  ps ax | grep "$1" | grep -v grep | awk '{print $1;}' | xargs -n1 kill -9
+}
+
+help() {
+  echo "watchserver hostname port server_dir"
+  echo "  Example: "
+  echo "      watchserver localhost 8080 /data/servers/portal.theubi.com"
+  exit 1
+}
+
+if [ $# -eq 3 ]; then
+  host=$1
+  port=$2
+  dir=$3
+else
+  help
+fi
+
+
+PIDFILE=/data/logs/watchserver_$host.pid
+if [ -f $PIDFILE ]; then
+    PID=`cat $PIDFILE`
+    if [ -d /proc/$PID ]; then
+        log "watchserver $PID is still running, exit"
+        exit 1
+    fi
+fi
+
+echo $$ > $PIDFILE
+
+
+/data/ucic/bin/healthcheck $host $port
+
+if [ $? -ne 0 ]; then
+   /data/ucic/bin/portal -d $dir -h $host -p $port restart
+fi
+
+rm $PIDFILE
