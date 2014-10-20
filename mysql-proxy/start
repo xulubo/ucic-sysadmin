@@ -1,0 +1,1 @@
+./bin/mysql-proxy --proxy-backend-addresses=dbhost:3306 --proxy-lua-script=./read_query.lua -P :3306
